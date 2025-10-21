@@ -44,8 +44,16 @@ coverage/
 .venv/
 
 # Cache
+__pycache__/
 .cache/
 .eslintcache
+
+# Python packaging
+*.egg-info/
+*.egg
+dist/
+wheels/
+*.whl
 
 # Files
 *.zip
@@ -54,3 +62,4 @@ cnpj_serpro.py
 dv_serpro.py
 exemplo_investigar.py
 teste_investigar.py
+_testezinho_legalzinho.py

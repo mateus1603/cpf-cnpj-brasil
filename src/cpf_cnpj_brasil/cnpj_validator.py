@@ -1,7 +1,9 @@
 """
 Classe para validação de CNPJ (Cadastro Nacional da Pessoa Jurídica).
 """
+from os import times
 import re
+from datetime import datetime
 from typing import Dict, Optional, Any
 import time
 import requests
@@ -18,11 +20,11 @@ class CNPJValidator:
         self.sequencia2 = [6] + self.sequencia1
 
         # URL base da API OpenCNPJ
-        self._url_base = "https://api.opencnpj.org/"
+        self._url_base = "https://publica.cnpj.ws/cnpj/"
 
-        # Controle de rate limit: máximo 50 requisições/segundo
+        # Controle de rate limit: máximo 3 requisições/minuto
         self._last_request_time = 0
-        self._min_interval = 1 / 50  # ~0.02 segundos entre requisições
+        self._min_interval = 60 / 3  # 20 segundos entre requisições
 
     @staticmethod
     def _validar_formato_entrada(cnpj):
@@ -169,6 +171,68 @@ class CNPJValidator:
         # Atualizar o tempo da última requisição
         self._last_request_time = time.time()
 
+    def _extrair_e_aguardar_liberacao(self, mensagem_erro: str) -> int:
+        """
+        Extrai a data de liberação da mensagem de erro e aguarda até essa data.
+
+        Parâmetros:
+            mensagem_erro (str): Mensagem de erro da API.
+        Retorna:
+            bool: True se aguardou com sucesso, False se não encontrou data.
+        """
+
+        # Padrão regex para capturar a data no formato da mensagem
+        padrao = r'([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{2}\s+\d{4}\s+\d{2}:\d{2}:\d{2})\s+GMT([+-]\d{4})'
+
+        match = re.search(padrao, mensagem_erro)
+
+        if not match:
+            raise ValueError("Não foi possível extrair a data de liberação.")
+
+        # Extrair data e timezone da mensagem
+        data_str = match.group(1)
+        timezone_str = match.group(2)  # Ex: "-0300"
+
+        # Parsear a data (sem timezone ainda)
+        data_liberacao = datetime.strptime(data_str, "%a %b %d %Y %H:%M:%S")
+
+        # Calcular o offset do timezone da mensagem em segundos
+        tz_hours = int(timezone_str[:3])
+        tz_minutes = int(timezone_str[0] + timezone_str[3:])
+        tz_offset_segundos = tz_hours * 3600 + tz_minutes * 60
+
+        # Converter a data de liberação para timestamp UTC
+        timestamp_liberacao_utc = data_liberacao.timestamp() - tz_offset_segundos
+
+        # Obter o offset do sistema local
+        utc_offset = datetime.now().astimezone().utcoffset()
+        offset_local = utc_offset.total_seconds() if utc_offset is not None else 0
+
+        # Ajustar timestamp para o timezone local
+        timestamp_liberacao_local = timestamp_liberacao_utc + offset_local
+
+        # Tempo atual
+        timestamp_atual = time.time()
+
+        # Calcular quanto tempo falta
+        segundos_espera = timestamp_liberacao_local - timestamp_atual
+
+        if segundos_espera <= 0:
+            print("A liberação já ocorreu!")
+            return 0
+        
+        minutos_espera = int(segundos_espera // 60)
+        segundos_espera = int(segundos_espera % 60)
+
+        print(f"Aguardando liberação... {minutos_espera}m {segundos_espera}s")
+        print(f"Liberação em: {data_str} GMT{timezone_str}")
+
+        time.sleep(segundos_espera)
+        print("Liberado! Continuando...")
+
+        return 0
+
+
     def investigar(self, cnpj: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
         """
         Consulta informações de um CNPJ via API OpenCNPJ.
@@ -198,23 +262,26 @@ class CNPJValidator:
         try:
             # Fazer a requisição GET
             response = requests.get(self._url_base + cnpj, timeout=timeout)
+            response_info = response.json()  # Forçar o parsing do JSON para capturar erros
 
             # Verificar o código de status
             if response.status_code == 200:
                 # CNPJ encontrado - retornar dados em JSON
-                return response.json()
+                return response_info
 
             if response.status_code == 404:
                 # CNPJ não encontrado
                 print(
-                    f"CNPJ {self.formatar_cnpj(cnpj)} não encontrado na base de dados.")
+                    f"{response_info['titulo']}. {response_info['detalhes']}.")
 
             if response.status_code == 429:
                 # Limite de requisições excedido
                 print(
-                    "Limite de requisições excedido. Aguarde alguns instantes e tente novamente.")
+                    f"{response_info['titulo']}. {response_info['detalhes']}.")
+                # Extrair e aguardar liberação
+                aguardar_liberacao = self._extrair_e_aguardar_liberacao(response_info['detalhes'])
                 # Aguardar 1 segundo adicional antes de retornar
-                time.sleep(1)
+                time.sleep(aguardar_liberacao)
 
             if response.status_code not in (200, 404, 429):
                 # Outro código de status

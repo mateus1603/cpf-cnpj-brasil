@@ -64,3 +64,5 @@ exemplo_investigar.py
 teste_investigar.py
 _testezinho_legalzinho.py
 _temp.py
+cnpj_validator_analise.md
+tests/test_validators.py

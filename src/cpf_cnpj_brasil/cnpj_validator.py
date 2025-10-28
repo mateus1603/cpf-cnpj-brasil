@@ -23,24 +23,24 @@ class CNPJValidator:
 
     def __init__(self):
         # Sequências de pesos para cálculo dos dígitos verificadores
-        self.sequencia1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-        self.sequencia2 = [6] + self.sequencia1
+        self.sequence1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+        self.sequence2 = [6] + self.sequence1
 
         # URL base da API CNPJws
-        self._url_base = "https://publica.cnpj.ws/cnpj/"
+        self._base_url = "https://publica.cnpj.ws/cnpj/"
 
         # Controle de rate limit: máximo 3 requisições/minuto
         self._last_request_time = 0
         self._min_interval = 60 / 3  # 20 segundos entre requisições
 
     @staticmethod
-    def _caracter_para_valor(caracter) -> int:
+    def _character_to_value(character) -> int:
         """
         Converte um caractere para seu valor numérico usando tabela ASCII.
         Implementação conforme especificação SERPRO.
         
         Parâmetros:
-            caracter (str): Caractere a ser convertido (0-9 ou A-Z).
+            character (str): Caractere a ser convertido (0-9 ou A-Z).
         
         Retorna:
             int: Valor numérico do caractere.
@@ -52,17 +52,17 @@ class CNPJValidator:
             '0'-'9' → 0-9
             'A'-'Z' → 17-42
         """
-        valor = ord(caracter) - 48
+        value = ord(character) - 48
 
         # Valida se o caractere está no intervalo esperado
         # '0'-'9': 0-9 ou 'A'-'Z': 17-42
-        if not (0 <= valor <= 9 or 17 <= valor <= 42):
-            raise ValueError(f"Caractere inválido: '{caracter}'")
+        if not (0 <= value <= 9 or 17 <= value <= 42):
+            raise ValueError(f"Caractere inválido: '{character}'")
 
-        return valor
+        return value
 
     @staticmethod
-    def _validar_formato_entrada(cnpj):
+    def _validate_input_format(cnpj):
         """
         Valida o formato do CNPJ de entrada.
         Suporta formato numérico (tradicional) e alfanumérico (novo).
@@ -93,28 +93,28 @@ class CNPJValidator:
             cnpj = cnpj.upper()
 
             # Remover pontuação mas manter alfanuméricos
-            cnpj_limpo = re.sub(r'[.\-/\s]', '', cnpj)
+            clean_cnpj = re.sub(r'[.\-/\s]', '', cnpj)
 
             # Verificar se tem 14 caracteres
-            if len(cnpj_limpo) != 14:
+            if len(clean_cnpj) != 14:
                 raise ValueError(
                     "CNPJ deve ter 14 caracteres (letras A-Z ou números 0-9).")
 
             # Verificar se todos são alfanuméricos (A-Z ou 0-9)
-            if not re.match(r'^[A-Z0-9]{14}$', cnpj_limpo):
+            if not re.match(r'^[A-Z0-9]{14}$', clean_cnpj):
                 raise ValueError(
                     "CNPJ deve conter apenas letras (A-Z) e números (0-9).")
 
-            return cnpj_limpo
+            return clean_cnpj
 
         raise ValueError("CNPJ deve ser string ou inteiro.")
 
-    def _calcular_digito(self, cnpj_parcial):
+    def _calculate_digit(self, partial_cnpj):
         """
         Calcular o dígito verificador do CNPJ.
 
         Parâmetros:
-            cnpj_parcial (str): Parte do CNPJ (12 ou 13 dígitos).
+            partial_cnpj (str): Parte do CNPJ (12 ou 13 dígitos).
 
         Retorna:
             int: Dígito verificador calculado.
@@ -123,22 +123,22 @@ class CNPJValidator:
             ValueError: Se as entradas forem incompatíveis.
         """
 
-        # Definir sequência de pesos com base no comprimento do cnpj_parcial
-        if len(cnpj_parcial) == 12:
-            sequencia = self.sequencia1
-        elif len(cnpj_parcial) == 13:
-            sequencia = self.sequencia2
+        # Definir sequência de pesos com base no comprimento do partial_cnpj
+        if len(partial_cnpj) == 12:
+            sequence = self.sequence1
+        elif len(partial_cnpj) == 13:
+            sequence = self.sequence2
         else:
             raise ValueError("CNPJ parcial deve ter 12 ou 13 dígitos.")
 
         # Calcular o dígito verificador
-        soma = sum(self._caracter_para_valor(digito) * peso for digito,
-                   peso in zip(cnpj_parcial, sequencia))
-        resto = soma % 11
-        return 0 if resto < 2 else 11 - resto
+        sum_value = sum(self._character_to_value(digit) * weight for digit,
+                   weight in zip(partial_cnpj, sequence))
+        remainder = sum_value % 11
+        return 0 if remainder < 2 else 11 - remainder
 
     @staticmethod
-    def formatar_cnpj(cnpj):
+    def format_cnpj(cnpj):
         """
         Formata o CNPJ no padrão XX.XXX.XXX/XXXX-XX
         Suporta CNPJ numérico e alfanumérico.
@@ -151,10 +151,10 @@ class CNPJValidator:
         """
 
         # Validar formato do CNPJ e retornar formatado
-        cnpj = CNPJValidator._validar_formato_entrada(cnpj)
+        cnpj = CNPJValidator._validate_input_format(cnpj)
         return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
 
-    def validar_cnpj(self, cnpj):
+    def validate_cnpj(self, cnpj):
         """
         Valida o CNPJ (numérico ou alfanumérico).
 
@@ -166,24 +166,24 @@ class CNPJValidator:
         """
 
         # Validar formato do CNPJ
-        cnpj = self._validar_formato_entrada(cnpj)
+        cnpj = self._validate_input_format(cnpj)
 
         # Calcular primeiro dígito verificador
-        digito1 = self._calcular_digito(cnpj[:12])
+        digit1 = self._calculate_digit(cnpj[:12])
 
         # Calcular segundo dígito verificador
-        digito2 = self._calcular_digito(cnpj[:12] + str(digito1))
+        digit2 = self._calculate_digit(cnpj[:12] + str(digit1))
 
         # Verificar se os dígitos calculados correspondem aos dígitos do CNPJ
-        return cnpj[-2:] == f"{digito1}{digito2}"
+        return cnpj[-2:] == f"{digit1}{digit2}"
 
-    def encontrar_matriz(self, cnpj_filial):
+    def find_headquarters(self, branch_cnpj):
         """
         Encontra o CNPJ da matriz a partir do CNPJ da filial.
         Suporta CNPJ numérico e alfanumérico.
 
         Parâmetros:
-            cnpj_filial (str ou int): CNPJ da filial.
+            branch_cnpj (str ou int): CNPJ da filial.
 
         Retorna:
             str: CNPJ da matriz formatado.
@@ -193,24 +193,24 @@ class CNPJValidator:
         """
 
         # Validar formato do CNPJ da filial
-        cnpj_filial = self._validar_formato_entrada(cnpj_filial)
+        branch_cnpj = self._validate_input_format(branch_cnpj)
 
         # Verificar se o CNPJ é válido
-        if not self.validar_cnpj(cnpj_filial):
+        if not self.validate_cnpj(branch_cnpj):
             raise ValueError("CNPJ inserido é inválido.")
 
         # Extrair a parte do CNPJ que identifica a empresa (8 primeiros dígitos)
-        cnpj_matriz_parcial = cnpj_filial[:8] + '0001'
+        partial_headquarters_cnpj = branch_cnpj[:8] + '0001'
 
         # Calcular os dígitos verificadores para o CNPJ da matriz
-        digito1 = self._calcular_digito(cnpj_matriz_parcial)
-        digito2 = self._calcular_digito(cnpj_matriz_parcial + str(digito1))
+        digit1 = self._calculate_digit(partial_headquarters_cnpj)
+        digit2 = self._calculate_digit(partial_headquarters_cnpj + str(digit1))
 
         # Montar o CNPJ completo da matriz
-        cnpj_matriz = cnpj_matriz_parcial + f"{digito1}{digito2}"
-        return self.formatar_cnpj(cnpj_matriz)
+        headquarters_cnpj = partial_headquarters_cnpj + f"{digit1}{digit2}"
+        return self.format_cnpj(headquarters_cnpj)
 
-    def _aguardar_rate_limit(self):
+    def _wait_rate_limit(self):
         """
         Aguarda o tempo necessário para respeitar o rate limit da API.
         Garante que não sejam feitas mais de 50 requisições por segundo.
@@ -228,12 +228,12 @@ class CNPJValidator:
         # Atualizar o tempo da última requisição
         self._last_request_time = time.time()
 
-    def _extrair_e_aguardar_liberacao(self, mensagem_erro: str) -> float:
+    def _extract_and_wait_for_release(self, error_message: str) -> float:
         """
         Extrai a data de liberação da mensagem de erro e aguarda até essa data.
 
         Parâmetros:
-            mensagem_erro (str): Mensagem de erro da API.
+            error_message (str): Mensagem de erro da API.
         Retorna:
             bool: True se aguardou com sucesso, False se não encontrou data.
         Levanta:
@@ -241,54 +241,53 @@ class CNPJValidator:
         """
 
         # Padrão regex para capturar a data no formato da mensagem
-        padrao = r'([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{2}\s+\d{4}\s+\d{2}:\d{2}:\d{2})\s+GMT([+-]\d{4})'
+        pattern = r'([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{2}\s+\d{4}\s+\d{2}:\d{2}:\d{2})\s+GMT([+-]\d{4})'
 
-        match = re.search(padrao, mensagem_erro)
+        match = re.search(pattern, error_message)
 
         if not match:
             raise ValueError("Não foi possível extrair a data de liberação.")
 
         # Extrair data e timezone da mensagem
-        data_str = match.group(1)
+        date_str = match.group(1)
         timezone_str = match.group(2)  # Ex: "-0300"
 
         # Parsear a data (sem timezone ainda)
-        data_liberacao = datetime.strptime(data_str, "%a %b %d %Y %H:%M:%S")
+        release_date = datetime.strptime(date_str, "%a %b %d %Y %H:%M:%S")
 
         # Calcular o offset do timezone da mensagem em segundos
         tz_hours = int(timezone_str[:3])
         tz_minutes = int(timezone_str[0] + timezone_str[3:])
-        tz_offset_segundos = tz_hours * 3600 + tz_minutes * 60
+        tz_offset_seconds = tz_hours * 3600 + tz_minutes * 60
 
         # Converter a data de liberação para timestamp UTC
-        timestamp_liberacao_utc = data_liberacao.timestamp() - tz_offset_segundos
+        release_timestamp_utc = release_date.timestamp() - tz_offset_seconds
 
         # Obter o offset do sistema local
         utc_offset = datetime.now().astimezone().utcoffset()
-        offset_local = utc_offset.total_seconds() if utc_offset is not None else 0
+        local_offset = utc_offset.total_seconds() if utc_offset is not None else 0
 
         # Ajustar timestamp para o timezone local
-        timestamp_liberacao_local = timestamp_liberacao_utc + offset_local
+        release_timestamp_local = release_timestamp_utc + local_offset
 
         # Tempo atual
-        timestamp_atual = time.time()
+        current_timestamp = time.time()
 
         # Calcular quanto tempo falta
-        segundos_espera = timestamp_liberacao_local - timestamp_atual
+        wait_seconds = release_timestamp_local - current_timestamp
 
         # Definir minutos e segundos de espera
-        minutos = int(segundos_espera // 60)
-        segundos = int(segundos_espera % 60)
+        minutes = int(wait_seconds // 60)
+        seconds = int(wait_seconds % 60)
 
-        print(f"Liberação em: {data_str} GMT{timezone_str}")
-        print(f"Aguardando liberação: {minutos}m {segundos}s")
-
-        if segundos_espera <= 0:
+        if wait_seconds <= 0:
             # print("A liberação já ocorreu!")
             return 0
-        return segundos_espera
 
-    def investigar(self, cnpj: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
+        print(f"Aguardando liberação: {minutes}m {seconds}s")
+        return wait_seconds
+
+    def investigate(self, cnpj: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
         """
         Consulta informações de um CNPJ via API OpenCNPJ.
         Suporta CNPJ numérico e alfanumérico (dependendo do suporte da API).
@@ -311,14 +310,14 @@ class CNPJValidator:
         """
 
         # Validar formato do CNPJ
-        cnpj = self._validar_formato_entrada(cnpj)
+        cnpj = self._validate_input_format(cnpj)
 
         # Aguardar para respeitar o rate limit
-        self._aguardar_rate_limit()
+        self._wait_rate_limit()
 
         try:
             # Fazer a requisição GET
-            response = requests.get(self._url_base + cnpj, timeout=timeout)
+            response = requests.get(self._base_url + cnpj, timeout=timeout)
             response_info = response.json()  # Forçar o parsing do JSON para capturar erros
 
             # Verificar o código de status
@@ -336,9 +335,9 @@ class CNPJValidator:
                 print(
                     f"{response_info['titulo']}. {response_info['detalhes']}.")
                 # Extrair e aguardar liberação
-                aguardar_liberacao = self._extrair_e_aguardar_liberacao(response_info['detalhes'])
+                wait_for_release = self._extract_and_wait_for_release(response_info['detalhes'])
                 # Aguardar tempo necessário para liberação
-                time.sleep(aguardar_liberacao)
+                time.sleep(wait_for_release)
 
             if response.status_code not in (200, 404, 429):
                 # Outro código de status
@@ -350,13 +349,13 @@ class CNPJValidator:
         # Levantar exceções específicas para tratamento externo
         except requests.exceptions.SSLError:
             print(
-                f"Erro de certificado SSL ao consultar o CNPJ {self.formatar_cnpj(cnpj)}. "
+                f"Erro de certificado SSL ao consultar o CNPJ {self.format_cnpj(cnpj)}. "
                 "Verifique a configuração de certificados do sistema.")
             return None
 
         except requests.exceptions.Timeout:
             print(
-                f"Tempo limite excedido ao consultar o CNPJ {self.formatar_cnpj(cnpj)}.")
+                f"Tempo limite excedido ao consultar o CNPJ {self.format_cnpj(cnpj)}.")
             return None
 
         except requests.exceptions.ConnectionError:

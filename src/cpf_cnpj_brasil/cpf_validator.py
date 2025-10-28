@@ -10,11 +10,11 @@ class CPFValidator:
     """
 
     def __init__(self):
-        self.sequencia1 = [10, 9, 8, 7, 6, 5, 4, 3, 2]
-        self.sequencia2 = [11] + self.sequencia1
+        self.sequence1 = [10, 9, 8, 7, 6, 5, 4, 3, 2]
+        self.sequence2 = [11] + self.sequence1
 
     @staticmethod
-    def _validar_formato_entrada(cpf):
+    def _validate_input_format(cpf):
         """
         Valida o formato do CPF de entrada.
 
@@ -33,20 +33,20 @@ class CPFValidator:
             cpf = str(cpf).zfill(11)
 
         # Extrair dígitos numéricos
-        dig_numericos = re.sub(r'\D', '', cpf)
+        numeric_digits = re.sub(r'\D', '', cpf)
 
         # Verificar se tem 11 dígitos, todos numéricos e é string
-        if not isinstance(dig_numericos, str) or len(dig_numericos) != 11 or not dig_numericos.isdigit():
+        if not isinstance(numeric_digits, str) or len(numeric_digits) != 11 or not numeric_digits.isdigit():
             raise ValueError(
                 "CPF com formato inválido. Deve ser uma string de 11 dígitos numéricos ou um inteiro.")
-        return dig_numericos
+        return numeric_digits
 
-    def _calcular_digito(self, cpf_parcial):
+    def _calculate_digit(self, partial_cpf):
         """
         Calcular o dígito verificador do CPF.
 
         Parâmetros:
-            cpf_parcial (str): Parte do CPF (9 ou 10 dígitos).
+            partial_cpf (str): Parte do CPF (9 ou 10 dígitos).
 
         Retorna:
             int: Dígito verificador calculado.
@@ -55,22 +55,22 @@ class CPFValidator:
             ValueError: Se as entradas forem incompatíveis.
         """
 
-        # Definir sequência de pesos com base no comprimento do cpf_parcial
-        if len(cpf_parcial) == 9:
-            sequencia = self.sequencia1
-        elif len(cpf_parcial) == 10:
-            sequencia = self.sequencia2
+        # Definir sequência de pesos com base no comprimento do partial_cpf
+        if len(partial_cpf) == 9:
+            sequence = self.sequence1
+        elif len(partial_cpf) == 10:
+            sequence = self.sequence2
         else:
             raise ValueError("CPF parcial deve ter 9 ou 10 dígitos.")
 
         # Calcular o dígito verificador
-        soma = sum(int(digito) * peso for digito,
-                   peso in zip(cpf_parcial, sequencia))
-        resto = soma % 11
-        return 0 if resto < 2 else 11 - resto
+        total = sum(int(digit) * weight for digit,
+                   weight in zip(partial_cpf, sequence))
+        remainder = total % 11
+        return 0 if remainder < 2 else 11 - remainder
 
     @staticmethod
-    def formatar_cpf(cpf):
+    def format_cpf(cpf):
         """
         Formata o CPF no padrão XXX.XXX.XXX-XX
 
@@ -82,10 +82,10 @@ class CPFValidator:
         """
 
         # Validar formato do CPF e retornar formatado
-        cpf = CPFValidator._validar_formato_entrada(cpf)
+        cpf = CPFValidator._validate_input_format(cpf)
         return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
-    def validar_cpf(self, cpf):
+    def validate_cpf(self, cpf):
         """
         Valida o CPF.
 
@@ -97,17 +97,17 @@ class CPFValidator:
         """
 
         # Validar formato do CPF
-        cpf = self._validar_formato_entrada(cpf)
+        cpf = self._validate_input_format(cpf)
 
         # Verificar se todos os dígitos são iguais
         if cpf == cpf[0] * len(cpf):
             return False  # CPF com todos os dígitos iguais é inválido
 
         # Calcular primeiro dígito verificador
-        digito1 = self._calcular_digito(cpf[:9])
+        digit1 = self._calculate_digit(cpf[:9])
 
         # Calcular segundo dígito verificador
-        digito2 = self._calcular_digito(cpf[:9] + str(digito1))
+        digit2 = self._calculate_digit(cpf[:9] + str(digit1))
 
         # Verificar se os dígitos calculados correspondem aos dígitos do CPF
-        return cpf[-2:] == f"{digito1}{digito2}"
+        return cpf[-2:] == f"{digit1}{digit2}"

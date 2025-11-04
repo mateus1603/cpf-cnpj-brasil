@@ -276,6 +276,15 @@ class CNPJ:
 
             if response.status_code == 429:
                 logger.warning("Rate limit atingido para CNPJ %s", cnpj)
+
+                # Verificar se o número máximo de tentativas foi atingido
+                if retry_count >= CNPJ._MAX_RETRIES:
+                    logger.error(
+                        "Máximo de %s tentativas atingido para CNPJ %s. Abortando.",
+                        CNPJ._MAX_RETRIES, cnpj
+                    )
+                    return None
+
                 # Extrair e aguardar liberação
                 wait_for_release = CNPJ._extract_and_wait_for_release(
                     response_info.get('detalhes', '')

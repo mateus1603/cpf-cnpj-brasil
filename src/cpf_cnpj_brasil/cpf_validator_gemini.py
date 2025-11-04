@@ -7,7 +7,7 @@ from typing import Union
 CpfInput = Union[str, int]
 
 
-class CPFValidator:
+class CPF:
     """
     Classe utilitária para validar e formatar números de CPF.
 
@@ -62,9 +62,9 @@ class CPFValidator:
             int: Dígito verificador calculado.
         """
         if len(partial_cpf) == 9:
-            sequence = CPFValidator._SEQUENCE1
+            sequence = CPF._SEQUENCE1
         elif len(partial_cpf) == 10:
-            sequence = CPFValidator._SEQUENCE2
+            sequence = CPF._SEQUENCE2
         else:
             raise ValueError("CPF parcial deve ter 9 ou 10 dígitos.")
 
@@ -77,7 +77,7 @@ class CPFValidator:
         return 0 if remainder < 2 else 11 - remainder
 
     @staticmethod
-    def format_cpf(cpf: CpfInput) -> str:
+    def format(cpf: CpfInput) -> str:
         """
         Formata o CPF no padrão XXX.XXX.XXX-XX.
 
@@ -88,11 +88,11 @@ class CPFValidator:
             str: CPF formatado.
         """
         # Validar formato do CPF e retornar formatado
-        cpf_digits = CPFValidator._validate_input_format(cpf)
+        cpf_digits = CPF._validate_input_format(cpf)
         return f"{cpf_digits[:3]}.{cpf_digits[3:6]}.{cpf_digits[6:9]}-{cpf_digits[9:]}"
 
     @staticmethod
-    def validate_cpf(cpf: CpfInput) -> bool:
+    def validate(cpf: CpfInput) -> bool:
         """
         Valida se um número de CPF é autêntico.
 
@@ -102,9 +102,10 @@ class CPFValidator:
         Retorna:
             bool: True se válido, False caso contrário.
         """
+
+        # Validar formato do CPF
         try:
-            # Validar formato do CPF
-            cpf_digits = CPFValidator._validate_input_format(cpf)
+            cpf_digits = CPF._validate_input_format(cpf)
         except ValueError:
             return False
 
@@ -113,8 +114,8 @@ class CPFValidator:
             return False
 
         # Calcular primeiro dígito verificador
-        digit1 = CPFValidator._calculate_digit(cpf_digits[:9])
+        digit1 = CPF._calculate_digit(cpf_digits[:9])
         # Calcular segundo dígito verificador
-        digit2 = CPFValidator._calculate_digit(cpf_digits[:9] + str(digit1))
+        digit2 = CPF._calculate_digit(cpf_digits[:9] + str(digit1))
         # Verificar se os dígitos calculados correspondem aos dígitos do CPF
         return cpf_digits[-2:] == f"{digit1}{digit2}"

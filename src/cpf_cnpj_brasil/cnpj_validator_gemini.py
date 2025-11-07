@@ -13,9 +13,11 @@ from typing import Any, Dict, Optional, Union, Literal
 import requests
 
 from .utils import rate_limited
+from .exceptions import CNPJValidationError, CNPJAPIError
 
 # Configurar logging
 logger = logging.getLogger(__name__)
+
 # Type hints
 CnpjInput = Union[str, int]
 ValidationResult = Union[str, Literal[False]]
@@ -56,7 +58,7 @@ class CNPJ:
             int: Valor numérico do caractere.
 
         Levanta:
-            ValueError: Se o caractere não for válido (0-9 ou A-Z).
+            CNPJValidationError: Se o caractere não for válido (0-9 ou A-Z).
 
         Exemplos:
             '0'-'9' → 0-9
@@ -67,7 +69,7 @@ class CNPJ:
         # Valida se o caractere está no intervalo esperado
         # '0'-'9': 0-9 ou 'A'-'Z': 17-42
         if not (0 <= value <= 9 or 17 <= value <= 42):
-            raise ValueError(f"Caractere inválido: '{character}'")
+            raise CNPJValidationError(f"Caractere inválido: '{character}'")
 
         return value
 
@@ -85,45 +87,43 @@ class CNPJ:
             str: CNPJ limpo (14 caracteres, uppercase, sem pontuação).
 
         Raises:
-            ValueError: Se o CNPJ tiver formato inválido.
+            CNPJValidationError: Se o CNPJ tiver formato inválido.
         """
 
         # Converter para string se for inteiro (apenas numéricos)
         if isinstance(cnpj, int):
-            cnpj = str(cnpj).zfill(14)
+            cnpj_str = str(cnpj).zfill(14)
 
             # Se veio como int, deve ser numérico
-            if len(cnpj) != 14 or not cnpj.isdigit():
-                raise ValueError(
+            if len(cnpj_str) != 14 or not cnpj_str.isdigit():
+                raise CNPJValidationError(
                     "CNPJ com formato inválido. "
                     "Inteiro deve ter no máximo 14 dígitos."
                 )
-            return cnpj
+            return cnpj_str
 
         # Se for string, pode ser alfanumérico
         if isinstance(cnpj, str):
-            # Converter para maiúsculas
-            cnpj = cnpj.upper()
 
-            # Remover pontuação mas manter alfanuméricos
-            clean_cnpj = re.sub(r'[.\-/\s]', '', cnpj)
+            # Converter para maiúsculas e remover pontuação mas manter alfanuméricos
+            clean_cnpj = re.sub(r'[.\-/\s]', '', cnpj.upper())
 
             # Verificar se tem 14 caracteres
             if len(clean_cnpj) != 14:
-                raise ValueError(
+                raise CNPJValidationError(
                     "CNPJ deve ter 14 caracteres "
                     "(letras A-Z ou números 0-9)."
                 )
 
             # Verificar se todos são alfanuméricos (A-Z ou 0-9)
             if not re.match(r'^[A-Z0-9]{14}$', clean_cnpj):
-                raise ValueError(
+                raise CNPJValidationError(
                     "CNPJ deve conter apenas letras (A-Z) e números (0-9)."
                 )
 
             return clean_cnpj
 
-        raise ValueError("CNPJ deve ser string ou inteiro.")
+        raise CNPJValidationError("CNPJ deve ser string ou inteiro.")
 
     @staticmethod
     def _calculate_digit(partial_cnpj: str) -> int:
@@ -137,7 +137,7 @@ class CNPJ:
             int: Dígito verificador calculado.
 
         Raises:
-            ValueError: Se as entradas forem incompatíveis.
+            CNPJValidationError: Se as entradas forem incompatíveis.
         """
 
         # Definir sequência de pesos com base no comprimento do partial_cnpj
@@ -146,7 +146,7 @@ class CNPJ:
         elif len(partial_cnpj) == 13:
             sequence = CNPJ._SEQUENCE2
         else:
-            raise ValueError("CNPJ parcial deve ter 12 ou 13 dígitos.")
+            raise CNPJValidationError("CNPJ parcial deve ter 12 ou 13 dígitos.")
 
         # Calcular o dígito verificador
         sum_value = sum(
@@ -166,7 +166,7 @@ class CNPJ:
         Retorna:
             float: O tempo de espera em segundos (0 se não for necessário).
         Levanta:
-            ValueError: Se não for possível extrair a data.
+            CNPJAPIError: Se não for possível extrair a data.
         """
 
         # Padrão regex para capturar a data no formato da mensagem
@@ -186,7 +186,7 @@ class CNPJ:
         match = re.search(pattern, error_message)
 
         if not match:
-            raise ValueError("Não foi possível extrair a data de liberação.")
+            raise CNPJAPIError("Não foi possível extrair a data de liberação.")
 
         # Extrair data e timezone da mensagem
         date_str = match.group(1)
@@ -245,15 +245,21 @@ class CNPJ:
             dict: Dicionário com os dados do CNPJ se encontrado.
             None: Se o CNPJ não for encontrado (404).
         Levanta:
-            ValueError: Se o CNPJ tiver formato inválido.
-            requests.exceptions.SSLError: Se houver erro de certificado SSL.
-            requests.exceptions.Timeout: Se a requisição exceder o tempo limite.
-            requests.exceptions.ConnectionError: Se houver falha na conexão.
-            requests.exceptions.RequestException: Para outros erros de requisição.
+            CNPJAPIError: Para erros de comunicação com a API.
+            CNPJValidationError: Se o CNPJ tiver formato inválido.
         Nota:
             Este método respeita o rate limit de 3 requisições/minuto da API CNPJws.
             Pode ser usado em loops sem preocupação com o limite de requisições.
         """
+
+        # Verificar se o número máximo de tentativas foi atingido
+        if retry_count >= CNPJ._MAX_RETRIES:
+            logger.error(
+                "Máximo de %s tentativas atingido para CNPJ %s. Abortando.",
+                CNPJ._MAX_RETRIES, cnpj
+            )
+            return None
+        
         # Fazer a requisição GET
         try:
             response = requests.get(CNPJ._BASE_URL + cnpj, timeout=timeout)
@@ -276,14 +282,6 @@ class CNPJ:
 
             if response.status_code == 429:
                 logger.warning("Rate limit atingido para CNPJ %s", cnpj)
-
-                # Verificar se o número máximo de tentativas foi atingido
-                if retry_count >= CNPJ._MAX_RETRIES:
-                    logger.error(
-                        "Máximo de %s tentativas atingido para CNPJ %s. Abortando.",
-                        CNPJ._MAX_RETRIES, cnpj
-                    )
-                    return None
 
                 # Extrair e aguardar liberação
                 wait_for_release = CNPJ._extract_and_wait_for_release(
@@ -308,23 +306,12 @@ class CNPJ:
                 # Levanta um erro genérico do requests para outros status
                 response.raise_for_status()
 
-            # return None
-
         # Levantar exceções específicas para tratamento externo
-        except requests.exceptions.SSLError as e:
-            raise e  # Re-levanta a exceção
+        except (requests.exceptions.RequestException, ValueError) as e:
+            raise CNPJAPIError(f"Erro na API ao consultar CNPJ: {e}") from e
 
-        except requests.exceptions.Timeout as e:
-            raise e  # Re-levanta a exceção
-
-        except requests.exceptions.ConnectionError as e:
-            raise e  # Re-levanta a exceção
-
-        except requests.exceptions.RequestException as e:
-            raise e  # Re-levanta a exceção
-
-        except ValueError as e:
-            # Re-lançar ValueError de validação de formato
+        except CNPJValidationError as e:
+            # Re-lançar CNPJValidationError de validação de formato
             raise e
 
     @staticmethod
@@ -348,11 +335,11 @@ class CNPJ:
         """
 
         # Validar CNPJ
-        cnpj_valid = CNPJ.validate(cnpj)
+        validated_cnpj = CNPJ.validate(cnpj)
 
-        if not cnpj_valid:
+        if not validated_cnpj:
             return None
-        return CNPJ._investigate_cnpj(cnpj_valid, timeout=timeout)
+        return CNPJ._investigate_cnpj(validated_cnpj, timeout=timeout)
 
 
     @staticmethod
@@ -369,7 +356,7 @@ class CNPJ:
             str: CNPJ da matriz formatado.
 
         Raises:
-            ValueError: Se o CNPJ da filial for inválido.
+            CNPJValidationError: Se o CNPJ da filial for inválido.
         """
 
         # Validar o CNPJ da filial
@@ -377,7 +364,7 @@ class CNPJ:
 
         # Verificar se o CNPJ é válido
         if not cnpj:
-            raise ValueError(f"CNPJ da filial inválido: {branch_cnpj}")
+            raise CNPJValidationError(f"CNPJ da filial inválido: {branch_cnpj}")
 
         # Extrair a parte do CNPJ que identifica a empresa (8 primeiros dígitos)
         partial_matrix_cnpj = cnpj[:8] + '0001'
@@ -388,6 +375,8 @@ class CNPJ:
 
         # Montar o CNPJ completo da matriz
         matrix_cnpj = partial_matrix_cnpj + f"{digit1}{digit2}"
+
+        logger.debug("Matriz de %s: %s", branch_cnpj, matrix_cnpj)
         return CNPJ.format(matrix_cnpj)
 
     @staticmethod
@@ -405,35 +394,35 @@ class CNPJ:
 
         # Validar formato do CNPJ
         try:
-            cnpj = CNPJ._validate_input_format(cnpj)
-        except ValueError:
+            clean_cnpj = CNPJ._validate_input_format(cnpj)
+        except CNPJValidationError:
             logger.debug("CNPJ rejeitado: formato inválido.")
             return False
 
         # Verificar se todos os caracteres são iguais
-        if cnpj == cnpj[0] * len(cnpj):
+        if clean_cnpj == clean_cnpj[0] * len(clean_cnpj):
             logger.debug(
                 "CNPJ rejeitado: todos os caracteres iguais (%s)",
-                cnpj[0]
+                clean_cnpj[0]
             )
             return False
 
         # Calcular primeiro dígito verificador
-        digit1 = CNPJ._calculate_digit(cnpj[:12])
+        digit1 = CNPJ._calculate_digit(clean_cnpj[:12])
 
         # Calcular segundo dígito verificador
-        digit2 = CNPJ._calculate_digit(cnpj[:12] + str(digit1))
+        digit2 = CNPJ._calculate_digit(clean_cnpj[:12] + str(digit1))
 
         # Verificar se os dígitos calculados correspondem aos dígitos do CNPJ
-        is_valid = cnpj[-2:] == f"{digit1}{digit2}"
+        is_valid = clean_cnpj[-2:] == f"{digit1}{digit2}"
 
         if is_valid:
-            logger.debug("CNPJ validado com sucesso: %s", cnpj)
-            return cnpj
+            logger.debug("CNPJ validado com sucesso: %s", clean_cnpj)
+            return clean_cnpj
 
         logger.debug(
             "CNPJ %s inválido: esperado %s%s, encontrado %s",
-            cnpj, digit1, digit2, cnpj[-2:]
+            clean_cnpj, digit1, digit2, clean_cnpj[-2:]
         )
         return False
 

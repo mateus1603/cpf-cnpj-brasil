@@ -1,10 +1,17 @@
 """Utilitários para validação de CPF (Cadastro de Pessoas Físicas)."""
 
 import re
-from typing import Union
+import logging
+from typing import Union, Literal
 
-# Type hint para CPF (pode ser str ou int)
+from .exceptions import CPFValidationError
+
+# Configurar logging
+logger = logging.getLogger(__name__)
+
+# Type hints
 CpfInput = Union[str, int]
+ValidationResult = Union[str, Literal[False]]
 
 
 class CPF:
@@ -16,8 +23,8 @@ class CPF:
     """
 
     # Sequências de pesos para cálculo dos dígitos verificadores (PEP 8: Constantes)
-    _SEQUENCE1 = [10, 9, 8, 7, 6, 5, 4, 3, 2]
-    _SEQUENCE2 = [11] + _SEQUENCE1
+    _SEQUENCE1 = list(range(10, 1, -1)) # de 10 a 2
+    _SEQUENCE2 = list(range(11, 1, -1)) # de 11 a 2
 
     @staticmethod
     def _validate_input_format(cpf: CpfInput) -> str:
@@ -31,7 +38,7 @@ class CPF:
             str: Os 11 dígitos numéricos do CPF.
 
         Raises:
-            ValueError: Se o CPF tiver formato inválido.
+            CPFValidationError: Se o CPF tiver formato inválido.
         """
         # Converter para string se for inteiro
         if isinstance(cpf, int):
@@ -39,12 +46,12 @@ class CPF:
         elif isinstance(cpf, str):
             cpf_str = cpf
         else:
-            raise ValueError("Entrada do CPF deve ser string ou inteiro.")
+            raise CPFValidationError("Entrada do CPF deve ser string ou inteiro.")
 
         numeric_digits = re.sub(r'\D', '', cpf_str)
 
         if len(numeric_digits) != 11 or not numeric_digits.isdigit():
-            raise ValueError(
+            raise CPFValidationError(
                 "CPF com formato inválido. Deve conter exatamente 11 "
                 "dígitos numéricos."
             )
@@ -60,13 +67,16 @@ class CPF:
 
         Retorna:
             int: Dígito verificador calculado.
+        
+        Raises:
+            CPFValidationError: Se o CPF parcial for inválido.
         """
         if len(partial_cpf) == 9:
             sequence = CPF._SEQUENCE1
         elif len(partial_cpf) == 10:
             sequence = CPF._SEQUENCE2
         else:
-            raise ValueError("CPF parcial deve ter 9 ou 10 dígitos.")
+            raise CPFValidationError("CPF parcial deve ter 9 ou 10 dígitos.")
 
         # Calcular o dígito verificador
         total = sum(
@@ -92,7 +102,7 @@ class CPF:
         return f"{cpf_digits[:3]}.{cpf_digits[3:6]}.{cpf_digits[6:9]}-{cpf_digits[9:]}"
 
     @staticmethod
-    def validate(cpf: CpfInput) -> bool:
+    def validate(cpf: CpfInput) -> ValidationResult:
         """
         Valida se um número de CPF é autêntico.
 
@@ -100,22 +110,39 @@ class CPF:
             cpf (str | int): CPF a ser validado.
 
         Retorna:
-            bool: True se válido, False caso contrário.
+            str: O CPF limpo (11 caracteres) se válido.
+            False: Caso contrário.
         """
 
         # Validar formato do CPF
         try:
             cpf_digits = CPF._validate_input_format(cpf)
-        except ValueError:
+        except CPFValidationError:
+            logger.debug("CPF rejeitado: formato inválido.")
             return False
 
         # Verificar se todos os dígitos são iguais (ex: 111.111.111-11)
         if cpf_digits == cpf_digits[0] * len(cpf_digits):
+            logger.debug(
+                "CPF rejeitado: todos os dígitos iguais (%s)",
+                cpf_digits[0]
+            )
             return False
 
         # Calcular primeiro dígito verificador
         digit1 = CPF._calculate_digit(cpf_digits[:9])
         # Calcular segundo dígito verificador
         digit2 = CPF._calculate_digit(cpf_digits[:9] + str(digit1))
+        
         # Verificar se os dígitos calculados correspondem aos dígitos do CPF
-        return cpf_digits[-2:] == f"{digit1}{digit2}"
+        is_valid = cpf_digits[-2:] == f"{digit1}{digit2}"
+
+        if is_valid:
+            logger.debug("CPF validado com sucesso: %s", cpf_digits)
+            return cpf_digits
+
+        logger.debug(
+            "CPF %s inválido: esperado %s%s, encontrado %s",
+            cpf_digits, digit1, digit2, cpf_digits[-2:]
+        )
+        return False

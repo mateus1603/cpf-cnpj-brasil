@@ -69,7 +69,10 @@ class CNPJ:
         # Valida se o caractere está no intervalo esperado
         # '0'-'9': 0-9 ou 'A'-'Z': 17-42
         if not (0 <= value <= 9 or 17 <= value <= 42):
-            raise CNPJValidationError(f"Caractere inválido: '{character}'")
+            raise CNPJValidationError(
+                f"Caractere inválido: '{character}'",
+                value=character
+            )
 
         return value
 
@@ -92,13 +95,22 @@ class CNPJ:
 
         # Converter para string se for inteiro (apenas numéricos)
         if isinstance(cnpj, int):
+            # Validar se é positivo
+            if cnpj < 0:
+                raise CNPJValidationError(
+                    "CNPJ não pode ser negativo.",
+                    value=cnpj
+                )
+
+            # Preencher com zeros à esquerda para ter 14 dígitos
             cnpj_str = str(cnpj).zfill(14)
 
             # Se veio como int, deve ser numérico
             if len(cnpj_str) != 14 or not cnpj_str.isdigit():
                 raise CNPJValidationError(
                     "CNPJ com formato inválido. "
-                    "Inteiro deve ter no máximo 14 dígitos."
+                    "Inteiro deve ter no máximo 14 dígitos.",
+                    value=cnpj,
                 )
             return cnpj_str
 
@@ -112,18 +124,23 @@ class CNPJ:
             if len(clean_cnpj) != 14:
                 raise CNPJValidationError(
                     "CNPJ deve ter 14 caracteres "
-                    "(letras A-Z ou números 0-9)."
+                    "(letras A-Z ou números 0-9).",
+                    value=cnpj,
                 )
 
             # Verificar se todos são alfanuméricos (A-Z ou 0-9)
             if not re.match(r'^[A-Z0-9]{14}$', clean_cnpj):
                 raise CNPJValidationError(
-                    "CNPJ deve conter apenas letras (A-Z) e números (0-9)."
+                    "CNPJ deve conter apenas letras (A-Z) e números (0-9).",
+                    value=cnpj,
                 )
 
             return clean_cnpj
 
-        raise CNPJValidationError("CNPJ deve ser string ou inteiro.")
+        raise CNPJValidationError(
+            "CNPJ deve ser string ou inteiro.",
+            value=cnpj
+        )
 
     @staticmethod
     def _calculate_digit(partial_cnpj: str) -> int:
@@ -146,14 +163,17 @@ class CNPJ:
         elif len(partial_cnpj) == 13:
             sequence = CNPJ._SEQUENCE2
         else:
-            raise CNPJValidationError("CNPJ parcial deve ter 12 ou 13 dígitos.")
+            raise CNPJValidationError(
+                "CNPJ parcial deve ter 12 ou 13 dígitos.",
+                value=partial_cnpj
+            )
 
         # Calcular o dígito verificador
-        sum_value = sum(
+        total = sum(
             CNPJ._character_to_value(digit) * weight
             for digit, weight in zip(partial_cnpj, sequence)
         )
-        remainder = sum_value % 11
+        remainder = total % 11
         return 0 if remainder < 2 else 11 - remainder
 
     @staticmethod
@@ -186,7 +206,10 @@ class CNPJ:
         match = re.search(pattern, error_message)
 
         if not match:
-            raise CNPJAPIError("Não foi possível extrair a data de liberação.")
+            raise CNPJAPIError(
+                "Não foi possível extrair a data de liberação.",
+                value=error_message
+            )
 
         # Extrair data e timezone da mensagem
         date_str = match.group(1)
@@ -307,8 +330,15 @@ class CNPJ:
                 response.raise_for_status()
 
         # Levantar exceções específicas para tratamento externo
-        except (requests.exceptions.RequestException, ValueError) as e:
-            raise CNPJAPIError(f"Erro na API ao consultar CNPJ: {e}") from e
+        except (requests.exceptions.SSLError,
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.HTTPError,
+                requests.exceptions.RequestException,
+        ) as e:
+            raise CNPJAPIError(
+                f"Erro na API ao consultar CNPJ: {e}", value=cnpj
+            ) from e
 
         except CNPJValidationError as e:
             # Re-lançar CNPJValidationError de validação de formato
@@ -364,7 +394,10 @@ class CNPJ:
 
         # Verificar se o CNPJ é válido
         if not cnpj:
-            raise CNPJValidationError(f"CNPJ da filial inválido: {branch_cnpj}")
+            raise CNPJValidationError(
+                f"CNPJ da filial inválido: {branch_cnpj}",
+                value=branch_cnpj
+            )
 
         # Extrair a parte do CNPJ que identifica a empresa (8 primeiros dígitos)
         partial_matrix_cnpj = cnpj[:8] + '0001'

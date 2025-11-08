@@ -42,18 +42,31 @@ class CPF:
         """
         # Converter para string se for inteiro
         if isinstance(cpf, int):
+
+            # Validar se é positivo
+            if cpf < 0:
+                raise CPFValidationError(
+                    "CPF não pode ser negativo.",
+                    value=cpf
+                )
+            
+            # Preencher com zeros à esquerda para garantir 11 dígitos
             cpf_str = str(cpf).zfill(11)
         elif isinstance(cpf, str):
             cpf_str = cpf
         else:
-            raise CPFValidationError("Entrada do CPF deve ser string ou inteiro.")
+            raise CPFValidationError(
+                "CPF deve ser string ou inteiro.",
+                value=cpf
+            )
 
         numeric_digits = re.sub(r'\D', '', cpf_str)
 
         if len(numeric_digits) != 11 or not numeric_digits.isdigit():
             raise CPFValidationError(
-                "CPF com formato inválido. Deve conter exatamente 11 "
-                "dígitos numéricos."
+                "CPF com formato inválido. "
+                "Inteiro deve ter no máximo 11 dígitos.",
+                value=cpf,
             )
         return numeric_digits
 
@@ -76,7 +89,10 @@ class CPF:
         elif len(partial_cpf) == 10:
             sequence = CPF._SEQUENCE2
         else:
-            raise CPFValidationError("CPF parcial deve ter 9 ou 10 dígitos.")
+            raise CPFValidationError(
+                "CPF parcial deve ter 9 ou 10 dígitos.",
+                value=partial_cpf
+            )
 
         # Calcular o dígito verificador
         total = sum(
@@ -84,6 +100,8 @@ class CPF:
             for digit, weight in zip(partial_cpf, sequence)
         )
         remainder = total % 11
+
+        print("Total:", total, "Resto:", remainder)  # Linha de depuração
         return 0 if remainder < 2 else 11 - remainder
 
     @staticmethod
@@ -116,33 +134,33 @@ class CPF:
 
         # Validar formato do CPF
         try:
-            cpf_digits = CPF._validate_input_format(cpf)
+            clean_cpf = CPF._validate_input_format(cpf)
         except CPFValidationError:
             logger.debug("CPF rejeitado: formato inválido.")
             return False
 
         # Verificar se todos os dígitos são iguais (ex: 111.111.111-11)
-        if cpf_digits == cpf_digits[0] * len(cpf_digits):
+        if clean_cpf == clean_cpf[0] * len(clean_cpf):
             logger.debug(
                 "CPF rejeitado: todos os dígitos iguais (%s)",
-                cpf_digits[0]
+                clean_cpf[0]
             )
             return False
 
         # Calcular primeiro dígito verificador
-        digit1 = CPF._calculate_digit(cpf_digits[:9])
+        digit1 = CPF._calculate_digit(clean_cpf[:9])
         # Calcular segundo dígito verificador
-        digit2 = CPF._calculate_digit(cpf_digits[:9] + str(digit1))
-        
+        digit2 = CPF._calculate_digit(clean_cpf[:9] + str(digit1))
+
         # Verificar se os dígitos calculados correspondem aos dígitos do CPF
-        is_valid = cpf_digits[-2:] == f"{digit1}{digit2}"
+        is_valid = clean_cpf[-2:] == f"{digit1}{digit2}"
 
         if is_valid:
-            logger.debug("CPF validado com sucesso: %s", cpf_digits)
-            return cpf_digits
+            logger.debug("CPF validado com sucesso: %s", clean_cpf)
+            return clean_cpf
 
         logger.debug(
             "CPF %s inválido: esperado %s%s, encontrado %s",
-            cpf_digits, digit1, digit2, cpf_digits[-2:]
+            clean_cpf, digit1, digit2, clean_cpf[-2:]
         )
         return False
